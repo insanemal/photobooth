@@ -4,16 +4,15 @@ import cv2
 import numpy as np
 
 def cvText(frame,text,loc,font,size):
-    cv2.putText(frame, text,loc,font,size,(255,255,255,255),4,cv2.LINE_AA)
-    cv2.putText(frame, text,loc,font,size,(0,0,0,0),2,cv2.LINE_AA)
-
+    cv2.putText(frame, text,loc,font,size,(255,255,255,255),12,cv2.LINE_AA)
+    cv2.putText(frame, text,loc,font,size,(0,0,0,0),4,cv2.LINE_AA)
 
 def normal(state):
     if state["Snap"]:
         display_time = state['countdown'] - int(time.time() - state['start_time'] )
         state['frame2'] = state['frame'].copy()
         if display_time > -1:
-            cvText(state['frame'], str(display_time),(620,350),state['font'],3)
+            cvText(state['frame'], str(display_time),(610,385),state['font'],3)
         if display_time < 1:
             if not(state['Freeze']):
                 state['Freeze'] = True
@@ -24,8 +23,6 @@ def normal(state):
         if display_time == -2:
             state['Snap'] = False
             state['Freeze'] = False
-
-
 
 def fourshot_worker(state,method):
     if not(state['Freeze']):
@@ -53,7 +50,6 @@ def fourshot_worker(state,method):
             state['frame_no'] = 1
             cv2.imwrite('/home/malcolm/test_'+str(int(time.time()))+'.png',state['Freeze_frame'])
 
-
 def quad_image(frame):
     tmp_frame = cv2.resize(frame,None,fx=0.5,fy=0.5)
     frame[0:360,0:640] = tmp_frame[0:360,0:640]
@@ -62,12 +58,12 @@ def quad_image(frame):
     frame[360:720,640:1280] = tmp_frame[0:360,0:640]
     return frame
 
-
 def fourshot(state,method):
     if not(state['Snap']):
+        method(state)
         state['frame'] = quad_image(state['frame'])
     if state['Snap']:
-        fourshot_worker(state, normal)
+        fourshot_worker(state, method)
 
 def cartoon(state):
     num_down = 2
@@ -131,8 +127,14 @@ def four_col(state):
     if state['Snap']:
         normal(state)
 
-
-
+def sepia(state):
+    frame = state['frame'].copy()
+    m_sepia = np.asarray([[0.272, 0.534, 0.131],
+                             [0.349, 0.686, 0.168],
+                             [0.393, 0.769, 0.189]])
+    state['frame'] = cv2.transform(frame, m_sepia)
+    if state['Snap']:
+        normal(state)
 
 def main():
     cap = cv2.VideoCapture(0)
@@ -141,24 +143,19 @@ def main():
              "countdown": 3,
              "mode": 0,
              'font': cv2.FONT_HERSHEY_SIMPLEX,
-             'frame_no' : 1}
-
+             'frame_no' : 1,
+             'four_shot' : False}
+    filters = (normal,cartoon,four_col,sepia)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH,1280)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT,720)
     while(True):
         ret, state['frame'] = cap.read()
-        if state['mode'] == 0:
-            normal(state)
-        if state['mode'] == 1:
-            fourshot(state,normal)
-        if state['mode'] == 2:
-            cartoon(state)
-        if state['mode'] == 3:
-            four_col(state)
+        if not(state['four_shot']):
+            filters[state['mode']](state)
+        if state['four_shot']:
+            fourshot(state,filters[state['mode']])
         if not(state['Freeze']):
             cvText(state['frame'], 'Press q to quit',(10,25),state['font'],1)
-
-        #gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         cv2.imshow('frame',state['frame'])
         key = cv2.waitKey(1) & 0xFF
         if key == ord('q'):
@@ -168,15 +165,15 @@ def main():
                 state['Snap'] = True;
                 state['start_time'] = time.time()
             if key == ord('1'):
-                state['mode'] = 1
-            if key == ord('2'):
-                state['mode'] = 2
-            if key == ord('3'):
-                state['mode'] = 3
-            if key == ord('0'):
                 state['mode'] = 0
-
-
+            if key == ord('2'):
+                state['mode'] = 1
+            if key == ord('3'):
+                state['mode'] = 2
+            if key == ord('4'):
+                state['mode'] = 3
+            if key == ord('f'):
+                state['four_shot'] = not(state['four_shot'])
     cap.release()
     cv2.destroyAllWindows()
 
