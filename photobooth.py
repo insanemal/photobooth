@@ -4,8 +4,8 @@ import cv2
 import numpy as np
 
 def cvText(frame,text,loc,font,size):
-    cv2.putText(frame, text,loc,font,size,(255,255,255,255),2,cv2.LINE_AA)
-    cv2.putText(frame, text,loc,font,size,(0,0,0,0),1,cv2.LINE_AA)
+    cv2.putText(frame, text,loc,font,size,(255,255,255,255),4,cv2.LINE_AA)
+    cv2.putText(frame, text,loc,font,size,(0,0,0,0),2,cv2.LINE_AA)
 
 
 def normal(state):
@@ -63,15 +63,75 @@ def quad_image(frame):
     return frame
 
 
-
-
-
-
 def fourshot(state,method):
     if not(state['Snap']):
         state['frame'] = quad_image(state['frame'])
     if state['Snap']:
         fourshot_worker(state, normal)
+
+def cartoon(state):
+    num_down = 2
+    num_bilateral = 7
+    img_colour = state['frame']
+
+    for _ in xrange(num_down):
+        img_colour = cv2.pyrDown(img_colour)
+
+    for _ in xrange(num_bilateral):
+        img_colour = cv2.bilateralFilter(img_colour, d=9, sigmaColor=9, sigmaSpace=7)
+
+    for _ in xrange(num_down):
+        img_colour = cv2.pyrUp(img_colour)
+
+    img_grey = cv2.cvtColor(state['frame'],cv2.COLOR_RGB2GRAY)
+    img_blur = cv2.medianBlur(img_grey, 7)
+
+    img_edge = cv2.adaptiveThreshold(img_blur, 255,
+                                    cv2.ADAPTIVE_THRESH_MEAN_C,
+                                    cv2.THRESH_BINARY,
+                                    blockSize=9,
+                                    C=2)
+    img_edge = cv2.cvtColor(img_edge, cv2.COLOR_GRAY2RGB)
+    state['frame'] = cv2.bitwise_and(img_colour, img_edge)
+    if state['Snap']:
+        normal(state)
+
+def four_col(state):
+    tmp_frame = cv2.resize(state['frame'],None,fx=0.5,fy=0.5)
+    tmp_grey = cv2.cvtColor(tmp_frame, cv2.COLOR_RGB2GRAY)
+    tmp_invert = cv2.bitwise_not(tmp_grey)
+    tmp_zeros = np.zeros((360,640),np.uint8)
+
+    tmp_frame1 = np.zeros((360,640,3),np.uint8)
+    tmp_frame2 = tmp_frame1.copy()
+    tmp_frame3 = tmp_frame1.copy()
+    tmp_frame4 = tmp_frame1.copy()
+
+    tmp_frame1[0:360,0:640,0] = tmp_invert
+    tmp_frame1[0:360,0:640,1] = tmp_grey
+    tmp_frame1[0:360,0:640,2] = tmp_zeros
+
+    tmp_frame2[0:360,0:640,1] = tmp_invert
+    tmp_frame2[0:360,0:640,2] = tmp_grey
+    tmp_frame2[0:360,0:640,0] = tmp_grey
+
+    tmp_frame3[0:360,0:640,1] = tmp_invert
+    tmp_frame3[0:360,0:640,0] = tmp_grey
+    tmp_frame3[0:360,0:640,2] = tmp_invert
+
+    tmp_frame4[0:360,0:640,2] = tmp_invert
+    tmp_frame4[0:360,0:640,0] = tmp_grey
+    tmp_frame4[0:360,0:640,1] = tmp_grey
+
+    state['frame'][0:360,0:640] = tmp_frame1[0:360,0:640]
+    state['frame'][0:360,640:1280] = tmp_frame2[0:360,0:640]
+    state['frame'][360:720,0:640] = tmp_frame3[0:360,0:640]
+    state['frame'][360:720,640:1280] = tmp_frame4[0:360,0:640]
+
+    if state['Snap']:
+        normal(state)
+
+
 
 
 def main():
@@ -91,6 +151,10 @@ def main():
             normal(state)
         if state['mode'] == 1:
             fourshot(state,normal)
+        if state['mode'] == 2:
+            cartoon(state)
+        if state['mode'] == 3:
+            four_col(state)
         if not(state['Freeze']):
             cvText(state['frame'], 'Press q to quit',(10,25),state['font'],1)
 
@@ -105,8 +169,13 @@ def main():
                 state['start_time'] = time.time()
             if key == ord('1'):
                 state['mode'] = 1
+            if key == ord('2'):
+                state['mode'] = 2
+            if key == ord('3'):
+                state['mode'] = 3
             if key == ord('0'):
                 state['mode'] = 0
+
 
     cap.release()
     cv2.destroyAllWindows()
