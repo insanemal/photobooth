@@ -25,74 +25,53 @@ def normal(state):
             state['Snap'] = False
             state['Freeze'] = False
 
-def fourshot(state):
-    if not(state['Snap']):
-        tmp_frame = cv2.resize(state['frame'],None,fx=0.5,fy=0.5)
-        state['frame'][0:360,0:640] = tmp_frame[0:360,0:640]
-        state['frame'][0:360,640:1280] = tmp_frame[0:360,0:640]
-        state['frame'][360:720,0:640] = tmp_frame[0:360,0:640]
-        state['frame'][360:720,640:1280] = tmp_frame[0:360,0:640]
-    if state['Snap']:
+
+
+def fourshot_worker(state,method):
+    if not(state['Freeze']):
+        state['oneshot'] = False
+    method(state)
+    if (not(state['oneshot']) and state['Freeze']):
+        state['oneshot'] = True
         if state['frame_no'] == 1:
-            if not(state['Freeze']):
-                state['oneshot'] = False
-            normal(state)
-            if (not(state['oneshot']) and state['Freeze']):
-                state['oneshot'] = True
-                state['oneshot_frame'] = np.zeros((720,1280,3),np.uint8)
-                #temp.copyto(state['oneshot_frame'].rowRange(0,359).colRange(0,639))
-                state['oneshot_frame'][0:360,0:640] = cv2.resize(state['frame'],None,fx=0.5,fy=0.5)[0:360,0:640]
-                state['frame'] = state['oneshot_frame'].copy()
-                state['Freeze_frame'] = state['oneshot_frame'].copy()
-            if not(state['Snap']):
-                state['Snap'] = True
-                state['frame_no'] = 2
-                state['start_time'] = time.time()
-
+            state['oneshot_frame'] = np.zeros((720,1280,3),np.uint8)
+            state['oneshot_frame'][0:360,0:640] = cv2.resize(state['frame'],None,fx=0.5,fy=0.5)[0:360,0:640]
         if state['frame_no'] == 2:
-            if not(state['Freeze']):
-                state['oneshot'] = False
-            normal(state)
-            if (not(state['oneshot']) and state['Freeze']):
-                state['oneshot'] = True
-                #cv2.resize(state['frame'],fx=0.5,fy=0.5).copyTo(state['oneshot_frame'].rowRange(0,359).colRange(640,1279))
-                state['oneshot_frame'][0:340,640:1280] = cv2.resize(state['frame'],None,fx=0.5,fy=0.5)[0:360,0:640]
-                state['frame'] = state['oneshot_frame'].copy()
-                state['Freeze_frame'] = state['oneshot_frame'].copy()
-
-            if not(state['Snap']):
-                state['Snap'] = True
-                state['frame_no'] = 3
-                state['start_time'] = time.time()
-
+            state['oneshot_frame'][0:360,640:1280] = cv2.resize(state['frame'],None,fx=0.5,fy=0.5)[0:360,0:640]
         if state['frame_no'] == 3:
-            if not(state['Freeze']):
-                state['oneshot'] = False
-            normal(state)
-            if (not(state['oneshot']) and state['Freeze']):
-                state['oneshot'] = True
-                #cv2.resize(state['frame'],fx=0.5,fy=0.5).copyTo(state['oneshot_frame'].rowRange(360,719).colRange(0,639))
-                state['oneshot_frame'][360:720,0:640] = cv2.resize(state['frame'],None,fx=0.5,fy=0.5)[0:360,0:640]
-                state['frame'] = state['oneshot_frame'].copy()
-                state['Freeze_frame'] = state['oneshot_frame'].copy()
-            if not(state['Snap']):
-                state['Snap'] = True
-                state['frame_no'] = 4
-                state['start_time'] = time.time()
-
+            state['oneshot_frame'][360:720,0:640] = cv2.resize(state['frame'],None,fx=0.5,fy=0.5)[0:360,0:640]
         if state['frame_no'] == 4:
-            if not(state['Freeze']):
-                state['oneshot'] = False
-            normal(state)
-            if (not(state['oneshot']) and state['Freeze']):
-                state['oneshot'] = True
-                #cv2.resize(state['frame'],fx=0.5,fy=0.5).copyTo(state['oneshot_frame'].rowRange(360,719).colRange(640,1278))
-                state['oneshot_frame'][360:720,640:1280] = cv2.resize(state['frame'],None,fx=0.5,fy=0.5)[0:360,0:640]
-                state['frame'] = state['oneshot_frame'].copy()
-                state['Freeze_frame'] = state['oneshot_frame'].copy()
-            if not(state['Snap']):
-                state['frame_no'] = 1
-                cv2.imwrite('/home/malcolm/test_'+str(int(time.time()))+'.png',state['Freeze_frame'])
+            state['oneshot_frame'][360:720,640:1280] = cv2.resize(state['frame'],None,fx=0.5,fy=0.5)[0:360,0:640]
+        state['frame'] = state['oneshot_frame'].copy()
+        state['Freeze_frame'] = state['oneshot_frame'].copy()
+    if not(state['Snap']):
+        state['frame_no'] += 1
+        if state['frame_no'] < 5:
+            state['start_time'] = time.time()
+            state['Snap'] = True
+        if state['frame_no'] == 5:
+            state['frame_no'] = 1
+            cv2.imwrite('/home/malcolm/test_'+str(int(time.time()))+'.png',state['Freeze_frame'])
+
+
+def quad_image(frame):
+    tmp_frame = cv2.resize(frame,None,fx=0.5,fy=0.5)
+    frame[0:360,0:640] = tmp_frame[0:360,0:640]
+    frame[0:360,640:1280] = tmp_frame[0:360,0:640]
+    frame[360:720,0:640] = tmp_frame[0:360,0:640]
+    frame[360:720,640:1280] = tmp_frame[0:360,0:640]
+    return frame
+
+
+
+
+
+
+def fourshot(state,method):
+    if not(state['Snap']):
+        state['frame'] = quad_image(state['frame'])
+    if state['Snap']:
+        fourshot_worker(state, normal)
 
 
 def main():
@@ -111,7 +90,7 @@ def main():
         if state['mode'] == 0:
             normal(state)
         if state['mode'] == 1:
-            fourshot(state)
+            fourshot(state,normal)
         if not(state['Freeze']):
             cvText(state['frame'], 'Press q to quit',(10,25),state['font'],1)
 
