@@ -1,3 +1,6 @@
 *.pyc
 .ropeproject
+booth.conf
+creds.data
+gapps.json
 

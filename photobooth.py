@@ -1,11 +1,45 @@
 #!/usr/bin/python2
 import time
 import cv2
+import os
 import numpy as np
+from google_cred import OAuth2Login
+import multiprocessing
+
+def load_config(state):
+    workingdir = os.path.expanduser('./')
+    filen = os.path.join(workingdir, 'booth.conf')
+    with open(filen) as f:
+        for line in f:
+            state[line[0:line.find(':')].strip()] = line[line.find(':')+1:].strip()
+
+def login_google(state):
+    try:
+        workingdir = os.path.expanduser('./')
+        secrets = os.path.join(workingdir, 'gapps.json')
+        cred_store = os.path.join(workingdir, 'creds.data')
+        state['gapps'] = OAuth2Login(secrets,cred_store,state['gmail'])
+        state['gapps_on'] = True
+    except Exception, e:
+        print "Login failed check your credentials\n    %s" % e
+        state['gapps_on'] = False
+        state['g_album'] = 'None'
+
+def picasa_upload(filen,state):
+    if (state['g_album'] != 'None') and state['gapps_on']:
+        album_url = '/data/feed/api/user/%s/albumid/%s' % (state['gmail'], state['g_album'])
+        photo = state['gapps'].InsertPhotoSimple(album_url,'PhotoBooth', state['gapps_caption'], filen, content_type='image/png')
+
 
 def cvText(frame,text,loc,font,size):
     cv2.putText(frame, text,loc,font,size,(255,255,255,255),12,cv2.LINE_AA)
     cv2.putText(frame, text,loc,font,size,(0,0,0,0),4,cv2.LINE_AA)
+
+def save_frame(state,frame):
+    fname = os.path.join(state['path'],'booth_'+str(int(time.time()))+'.png')
+    cv2.imwrite(fname,frame)
+    state['worklist'].append(fname)
+
 
 def normal(state):
     if state["Snap"]:
@@ -17,10 +51,10 @@ def normal(state):
             if not(state['Freeze']):
                 state['Freeze'] = True
                 state['Freeze_frame'] = state['frame2'].copy()
-                cv2.imwrite('/home/malcolm/test_'+str(int(time.time()))+'.png',state['frame2'])
+                save_frame(state,state['frame2'])
             if state['Freeze']:
                 state['frame'] = state['Freeze_frame'].copy()
-        if display_time == -2:
+        if display_time < -1:
             state['Snap'] = False
             state['Freeze'] = False
 
@@ -48,7 +82,7 @@ def fourshot_worker(state,method):
             state['Snap'] = True
         if state['frame_no'] == 5:
             state['frame_no'] = 1
-            cv2.imwrite('/home/malcolm/test_'+str(int(time.time()))+'.png',state['Freeze_frame'])
+            save_frame(state,state['Freeze_frame'])
 
 def quad_image(frame):
     tmp_frame = cv2.resize(frame,None,fx=0.5,fy=0.5)
@@ -136,16 +170,46 @@ def sepia(state):
     if state['Snap']:
         normal(state)
 
+def grey(state):
+    img_grey = cv2.cvtColor(state['frame'],cv2.COLOR_RGB2GRAY)
+    state['frame'] = cv2.cvtColor(img_grey,cv2.COLOR_GRAY2RGB)
+    if state['Snap']:
+        normal(state)
+
+def other_process(state,worklist):
+    sleep_timer = 0
+    while not('QUIT' in worklist):
+        if len(worklist) > 0:
+            fname = worklist.pop()
+            print 'Uploading: %s' % (fname)
+            picasa_upload(fname,state)
+        else:
+            print 'sleeping'
+            time.sleep(1)
+            sleep_timer += 1
+            if sleep_timer > 10000:
+                login_google(state)
+
+
 def main():
+    state = {}
+    #state = m.dict()
+    state['Snap'] = False
+    state["Freeze"] = False
+    state["countdown"] = 3
+    state["mode"] = 0
+    state['font'] = cv2.FONT_HERSHEY_SIMPLEX
+    state['frame_no'] = 1
+    state['four_shot'] = False
+    load_config(state)
+    login_google(state)
+    m = multiprocessing.Manager()
+    worklist = m.list()
+    p = multiprocessing.Process(target = other_process,args=(state,worklist,))
+    p.start()
+    state['worklist'] = worklist
+    filters = (normal,cartoon,four_col,sepia,grey)
     cap = cv2.VideoCapture(0)
-    state = {'Snap':False,
-             "Freeze":False,
-             "countdown": 3,
-             "mode": 0,
-             'font': cv2.FONT_HERSHEY_SIMPLEX,
-             'frame_no' : 1,
-             'four_shot' : False}
-    filters = (normal,cartoon,four_col,sepia)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH,1280)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT,720)
     while(True):
@@ -172,10 +236,17 @@ def main():
                 state['mode'] = 2
             if key == ord('4'):
                 state['mode'] = 3
+            if key == ord('5'):
+                state['mode'] = 4
             if key == ord('f'):
                 state['four_shot'] = not(state['four_shot'])
     cap.release()
     cv2.destroyAllWindows()
+    while len(worklist) > 0:
+        print 'Sleeping main'
+        time.sleep(1)
+    worklist.append("QUIT")
+    p.join()
 
 if __name__ == '__main__':
     main()
