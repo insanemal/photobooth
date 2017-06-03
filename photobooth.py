@@ -211,6 +211,12 @@ def grey(state):
     if state['Snap']:
         normal(state)
 
+def erode(state):
+    kernel = np.ones((5,5),np.uint8)
+    state['frame'] = cv2.erode(state['frame'],kernel,iterations =3)
+    if state['Snap']:
+        normal(state)
+
 def other_process(state,worklist):
     sleep_timer = 0
     while not('QUIT' in worklist):
@@ -235,7 +241,7 @@ def main():
             'frame_no': 1,
             'four_shot': False,
             'random': False,
-            'random_list': [0,1,2,3,4]}
+            'random_list': [0,1,2,3,4,5]}
     load_config(state)
     login_google(state)
     m = multiprocessing.Manager()
@@ -243,7 +249,7 @@ def main():
     p = multiprocessing.Process(target = other_process,args=(state,worklist,))
     p.start()
     state['worklist'] = worklist
-    filters = (normal,cartoon,four_col,sepia,grey)
+    filters = (normal,cartoon,four_col,sepia,grey,erode)
     cap = cv2.VideoCapture(0)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH,1280)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT,720)
@@ -255,9 +261,11 @@ def main():
             fourshot(state,filters[state['mode']],filters[state['mode']],filters[state['mode']],filters[state['mode']])
         if state['random']:
             fourshot(state,filters[state['random_list'][0]],filters[state['random_list'][1]],filters[state['random_list'][2]],filters[state['random_list'][3]])
-        if not(state['Freeze']):
-            cvText(state['frame'], 'Press q to quit',(10,25),state['font'],1)
-        cv2.imshow('frame',state['frame'])
+#        if not(state['Freeze']):
+#            cvText(state['frame'], 'Press q to quit',(10,25),state['font'],1)
+        cv2.namedWindow("PhotoBooth", cv2.WND_PROP_FULLSCREEN)
+        cv2.setWindowProperty("PhotoBooth", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+        cv2.imshow('PhotoBooth',state['frame'])
         key = cv2.waitKey(1) & 0xFF
         if key == ord('q'):
             break
@@ -279,6 +287,9 @@ def main():
                 state['random'] = False
             if key == ord('5'):
                 state['mode'] = 4
+                state['random'] = False
+            if key == ord('6'):
+                state['mode'] = 5
                 state['random'] = False
             if key == ord('f'):
                 state['four_shot'] = not(state['four_shot'])
