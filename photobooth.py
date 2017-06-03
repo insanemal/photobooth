@@ -5,6 +5,7 @@ import os
 import numpy as np
 from google_cred import OAuth2Login
 import multiprocessing
+from random import shuffle
 
 def load_config(state):
     workingdir = os.path.expanduser('./')
@@ -84,20 +85,54 @@ def fourshot_worker(state,method):
             state['frame_no'] = 1
             save_frame(state,state['Freeze_frame'])
 
-def quad_image(frame):
-    tmp_frame = cv2.resize(frame,None,fx=0.5,fy=0.5)
+def quad_image(frame1,frame2,frame3,frame4):
+    frame = np.zeros((720,1280,3),np.uint8)
+    tmp_frame = cv2.resize(frame1,None,fx=0.5,fy=0.5)
     frame[0:360,0:640] = tmp_frame[0:360,0:640]
+    tmp_frame = cv2.resize(frame2,None,fx=0.5,fy=0.5)
     frame[0:360,640:1280] = tmp_frame[0:360,0:640]
+    tmp_frame = cv2.resize(frame3,None,fx=0.5,fy=0.5)
     frame[360:720,0:640] = tmp_frame[0:360,0:640]
+    tmp_frame = cv2.resize(frame4,None,fx=0.5,fy=0.5)
     frame[360:720,640:1280] = tmp_frame[0:360,0:640]
     return frame
 
-def fourshot(state,method):
+def fourshot(state,method1,method2,method3,method4):
     if not(state['Snap']):
-        method(state)
-        state['frame'] = quad_image(state['frame'])
+        if state['four_shot']:
+            method1(state)
+            state['frame'] = quad_image(state['frame'],state['frame'],state['frame'],state['frame'])
+        if not(state['four_shot']):
+            tmp_image = state['frame'].copy()
+
+            method1(state)
+            tmp_frame1 = state['frame'].copy()
+            state['frame'] = tmp_image.copy()
+
+            method2(state)
+            tmp_frame2 = state['frame'].copy()
+            state['frame'] = tmp_image.copy()
+
+            method3(state)
+            tmp_frame3 = state['frame'].copy()
+            state['frame'] = tmp_image.copy()
+
+            method4(state)
+            tmp_frame4 = state['frame'].copy()
+            state['frame'] = quad_image(tmp_frame1,tmp_frame2,tmp_frame3,tmp_frame4)
     if state['Snap']:
-        fourshot_worker(state, method)
+        if state['four_shot']:
+            fourshot_worker(state, method1)
+        if state['random']:
+            if state['frame_no'] == 1:
+                fourshot_worker(state, method1)
+            if state['frame_no'] == 2:
+                fourshot_worker(state, method2)
+            if state['frame_no'] == 3:
+                fourshot_worker(state, method3)
+            if state['frame_no'] == 4:
+                fourshot_worker(state, method4)
+
 
 def cartoon(state):
     num_down = 2
@@ -192,15 +227,15 @@ def other_process(state,worklist):
 
 
 def main():
-    state = {}
-    #state = m.dict()
-    state['Snap'] = False
-    state["Freeze"] = False
-    state["countdown"] = 3
-    state["mode"] = 0
-    state['font'] = cv2.FONT_HERSHEY_SIMPLEX
-    state['frame_no'] = 1
-    state['four_shot'] = False
+    state = {'Snap': False,
+            "Freeze": False,
+            "countdown": 3,
+            "mode": 0,
+            'font': cv2.FONT_HERSHEY_SIMPLEX,
+            'frame_no': 1,
+            'four_shot': False,
+            'random': False,
+            'random_list': [0,1,2,3,4]}
     load_config(state)
     login_google(state)
     m = multiprocessing.Manager()
@@ -214,10 +249,12 @@ def main():
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT,720)
     while(True):
         ret, state['frame'] = cap.read()
-        if not(state['four_shot']):
+        if (not(state['four_shot']) and not(state['random'])):
             filters[state['mode']](state)
         if state['four_shot']:
-            fourshot(state,filters[state['mode']])
+            fourshot(state,filters[state['mode']],filters[state['mode']],filters[state['mode']],filters[state['mode']])
+        if state['random']:
+            fourshot(state,filters[state['random_list'][0]],filters[state['random_list'][1]],filters[state['random_list'][2]],filters[state['random_list'][3]])
         if not(state['Freeze']):
             cvText(state['frame'], 'Press q to quit',(10,25),state['font'],1)
         cv2.imshow('frame',state['frame'])
@@ -230,16 +267,26 @@ def main():
                 state['start_time'] = time.time()
             if key == ord('1'):
                 state['mode'] = 0
+                state['random'] = False
             if key == ord('2'):
                 state['mode'] = 1
+                state['random'] = False
             if key == ord('3'):
                 state['mode'] = 2
+                state['random'] = False
             if key == ord('4'):
                 state['mode'] = 3
+                state['random'] = False
             if key == ord('5'):
                 state['mode'] = 4
+                state['random'] = False
             if key == ord('f'):
                 state['four_shot'] = not(state['four_shot'])
+                state['random'] = False
+            if key == ord('r'):
+                state['random'] = not(state['random'])
+                state['four_shot'] = False
+                shuffle(state['random_list'])
     cap.release()
     cv2.destroyAllWindows()
     while len(worklist) > 0:
